@@ -100,19 +100,19 @@ fn build_imgproxy_url(
     src: &str,
     width: u32,
     quality: u32,
-    format: &str,
+    ext: &str,
 ) -> String {
     let encoded = URL_SAFE_NO_PAD.encode(src.as_bytes());
 
-    let path = if format.is_empty() {
+    let path = if ext.is_empty() {
         format!(
-            "/rs:{}:{}:0:0/q:{}/{}",
+            "/rs:{}:{}:0:0/q:{}/sm:1/{}",
             state.resize_type, width, quality, encoded,
         )
     } else {
         format!(
-            "/rs:{}:{}:0:0/q:{}/{}.{}",
-            state.resize_type, width, quality, encoded, format,
+            "/rs:{}:{}:0:0/q:{}/sm:1/{}.{}",
+            state.resize_type, width, quality, encoded, ext,
         )
     };
 
@@ -163,9 +163,9 @@ async fn handler(
         .unwrap_or(75);
 
     let accept = headers.get("accept").and_then(|v| v.to_str().ok());
-    let format = best_format(accept);
+    let ext = best_format(accept);
 
-    let target = build_imgproxy_url(&state, src, width, quality, format);
+    let target = build_imgproxy_url(&state, src, width, quality, ext);
 
     let mut req = state.client.get(&target);
     for (name, value) in &headers {
