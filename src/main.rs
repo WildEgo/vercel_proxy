@@ -106,12 +106,12 @@ fn build_imgproxy_url(
 
     let path = if ext.is_empty() {
         format!(
-            "/rs:{}:{}:0:0/q:{}/sm:1/{}",
+            "/rs:{}:{}:0:0/q:{}/sm:1/sh:0.3/{}",
             state.resize_type, width, quality, encoded,
         )
     } else {
         format!(
-            "/rs:{}:{}:0:0/q:{}/sm:1/{}.{}",
+            "/rs:{}:{}:0:0/q:{}/sm:1/sh:0.3/{}.{}",
             state.resize_type, width, quality, encoded, ext,
         )
     };
@@ -160,12 +160,18 @@ async fn handler(
         .q
         .as_deref()
         .and_then(|s| s.parse().ok())
-        .unwrap_or(75);
+        .unwrap_or(60);
 
     let accept = headers.get("accept").and_then(|v| v.to_str().ok());
     let ext = best_format(accept);
 
-    let target = build_imgproxy_url(&state, src, width, quality, ext);
+    let adjusted_quality = match ext {
+        "avif" => (quality as f32 * 0.65).round() as u32,
+        "webp" => (quality as f32 * 0.80).round() as u32,
+        _ => quality,
+    };
+
+    let target = build_imgproxy_url(&state, src, width, adjusted_quality, ext);
 
     let mut req = state.client.get(&target);
     for (name, value) in &headers {
