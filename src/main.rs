@@ -133,9 +133,29 @@ async fn handler(
     headers: HeaderMap,
     Query(params): Query<Params>,
 ) -> Response {
-    let src = match &params.url {
+    let raw_url = match &params.url {
         Some(u) if !u.is_empty() => u.as_str(),
         _ => return (StatusCode::BAD_REQUEST, "missing url\n").into_response(),
+    };
+
+    let resolved;
+    let src = if raw_url.starts_with("http://") || raw_url.starts_with("https://") {
+        raw_url
+    } else {
+        let host = match headers.get("host").and_then(|v| v.to_str().ok()) {
+            Some(h) => h,
+            None => return (StatusCode::BAD_REQUEST, "missing host header\n").into_response(),
+        };
+        let scheme = headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("https");
+        if raw_url.starts_with('/') {
+            resolved = format!("{scheme}://{host}{raw_url}");
+        } else {
+            resolved = format!("{scheme}://{host}/{raw_url}");
+        }
+        resolved.as_str()
     };
 
     if !is_allowed_source(src, &state.allowed_sources) {
