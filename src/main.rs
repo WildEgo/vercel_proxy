@@ -1,11 +1,11 @@
 use axum::{
+    Router,
     extract::{Query, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::get,
-    Router,
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use hmac::{Hmac, Mac};
 use reqwest::Client;
 use sha2::Sha256;
@@ -54,7 +54,7 @@ fn is_allowed_source(raw: &str, allowed: &[String]) -> bool {
 
     let host = match url.host_str() {
         Some(h) => h,
-        None => return false,
+        _ => return false,
     };
 
     let mut source = String::with_capacity(url.scheme().len() + 3 + host.len() + 6);
@@ -74,21 +74,47 @@ fn sign(path: &str, key: Option<&[u8]>, salt: Option<&[u8]>) -> String {
         return "unsafe".to_owned();
     };
 
-    let mut mac =
-        Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts any key length");
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("HMAC accepts any key length");
     mac.update(salt);
     mac.update(path.as_bytes());
 
     URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes())
 }
 
-fn build_imgproxy_url(state: &AppState, src: &str, width: u32, quality: u32) -> String {
+fn best_format(accept: Option<&str>) -> &'static str {
+    let accept = match accept {
+        Some(a) => a,
+        _ => return "",
+    };
+    if accept.contains("image/avif") {
+        return "avif";
+    }
+    if accept.contains("image/webp") {
+        return "webp";
+    }
+    ""
+}
+
+fn build_imgproxy_url(
+    state: &AppState,
+    src: &str,
+    width: u32,
+    quality: u32,
+    format: &str,
+) -> String {
     let encoded = URL_SAFE_NO_PAD.encode(src.as_bytes());
 
-    let path = format!(
-        "/rs:{}:{}:0:0/q:{}/{}",
-        state.resize_type, width, quality, encoded,
-    );
+    let path = if format.is_empty() {
+        format!(
+            "/rs:{}:{}:0:0/q:{}/{}",
+            state.resize_type, width, quality, encoded,
+        )
+    } else {
+        format!(
+            "/rs:{}:{}:0:0/q:{}/{}.{}",
+            state.resize_type, width, quality, encoded, format,
+        )
+    };
 
     let sig = sign(&path, state.key.as_deref(), state.salt.as_deref());
 
@@ -136,7 +162,10 @@ async fn handler(
         .and_then(|s| s.parse().ok())
         .unwrap_or(75);
 
-    let target = build_imgproxy_url(&state, src, width, quality);
+    let accept = headers.get("accept").and_then(|v| v.to_str().ok());
+    let format = best_format(accept);
+
+    let target = build_imgproxy_url(&state, src, width, quality, format);
 
     let mut req = state.client.get(&target);
     for (name, value) in &headers {
@@ -154,7 +183,8 @@ async fn handler(
         }
     };
 
-    let status = StatusCode::from_u16(upstream.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let status =
+        StatusCode::from_u16(upstream.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
 
     let mut response_headers = HeaderMap::with_capacity(upstream.headers().len());
     for (k, v) in upstream.headers() {
