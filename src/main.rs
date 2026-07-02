@@ -171,6 +171,8 @@ async fn handler(
 
 #[tokio::main]
 async fn main() {
+    let _ = dotenvy::dotenv();
+
     let key_hex = env::var("IMGPROXY_KEY").unwrap_or_default();
     let salt_hex = env::var("IMGPROXY_SALT").unwrap_or_default();
 
