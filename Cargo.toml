@@ -1,0 +1,23 @@
+[package]
+name = "vercel-proxy"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8"
+base64 = "0.22"
+hex = "0.4"
+hmac = "0.12"
+http = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+url = "2"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+opt-level = 3
